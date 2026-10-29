@@ -16,13 +16,24 @@ var DEFAULT_MAX = 20;
 var MAX_LIMIT = 500; // GmailApp.search hard limit
 
 function doGet(e) {
+  var params = (e && e.parameter) || {};
+  var startedAt = Date.now();
+  var authorized = false;
   try {
-    var params = (e && e.parameter) || {};
     checkToken_(params.token);
+    authorized = true;
     var req = parseSearchParams_(params);
-    return json_(searchMail_(req));
+    var result = searchMail_(req);
+    var logError = logSearch_(req, result.count, Date.now() - startedAt);
+    if (logError) result.logError = logError;
+    return json_(result);
   } catch (err) {
-    return json_({ ok: false, error: String(err && err.message ? err.message : err) });
+    var message = String(err && err.message ? err.message : err);
+    var out = { ok: false, error: message };
+    var logFailure = logError_('search', params, message, Date.now() - startedAt);
+    // Only callers with a valid token see internal log failures.
+    if (logFailure && authorized) out.logError = logFailure;
+    return json_(out);
   }
 }
 
@@ -99,4 +110,13 @@ function serializeMessage_(msg, body) {
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Run this from the editor after adding a scope to appsscript.json.
+ * doGet catches log-write errors, so running it never shows the consent screen.
+ */
+function authorize() {
+  ScriptApp.requireAllScopes(ScriptApp.AuthMode.FULL);
+  console.log('all scopes granted');
 }
